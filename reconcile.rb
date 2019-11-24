@@ -1,3 +1,9 @@
+# Directions
+# Download ynab data and Capital One Data
+# run dos2unix on capital one data
+# set file locations and earliest date
+# run the file and check unmatched transactions
+
 require "pry"
 require "pry-byebug"
 require "csv"
@@ -136,7 +142,7 @@ class Reconciler
   end
 
   def run_n_day_matches(n)
-    
+
     run_matches { |y, c| n_day_match?(n, y, c) }
   end
 
