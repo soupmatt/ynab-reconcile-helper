@@ -10,30 +10,32 @@ require "csv"
 require "active_support/core_ext"
 
 ynab_data_file = "data/ynab_register.csv"
-capital_one_data_file = "data/capital_one_0901-1124.csv"
+# capital_one_data_file = "data/capital_one_0901-1124.csv"
+chase_data_file = "data/Chase5185_Activity20191101_20191217_20191217.csv"
 
 class Reconciler
   EARLIEST_DATE = Date.new(2019, 9, 1)
 
   attr_accessor :ynab_data,
-    :capital_one_data,
+    :bank_data,
     :matches,
     :ynab_multimatched,
     :ynab_unmatched,
-    :capital_one_unmatched
+    :bank_unmatched
 
-  def initialize(ynab_data_file, capital_one_data_file)
+  def initialize(ynab_data_file, bank_data_file)
+    # @bank_data = load_capital_one_data(bank_data_file)
+    @bank_data = load_chase_data(bank_data_file)
     @ynab_data = load_ynab_data(ynab_data_file)
-    @capital_one_data = load_capital_one_data(capital_one_data_file)
     @matches = {}
     @ynab_multimatched = []
     @ynab_unmatched = @ynab_data.dup
-    @capital_one_unmatched = @capital_one_data.dup
+    @bank_unmatched = @bank_data.dup
   end
 
   def load_ynab_data(ynab_data_file)
     data = CSV.foreach(ynab_data_file, headers: true, header_converters: :symbol)
-      .select { |row| row[:account] == "360 Checking" }
+      .select { |row| row[:account] == "Unlimited Visa" }
       .map { |row|
         row.to_hash.except(:flag, :category_groupcategory).tap do |h|
           h[:inflow] = str_to_float(row[:inflow])
@@ -105,6 +107,17 @@ class Reconciler
       end
   end
 
+  def load_chase_data(chase_data_file)
+    CSV.foreach(chase_data_file, headers: true, header_converters: :symbol)
+      .map do |row|
+        row.to_hash.except(:amount, :transaction_date, :category, :post_date).tap do |h|
+          h[:amount] = row[:amount].to_f
+          d = row[:transaction_date].split("/").map(&:to_i)
+          h[:date] = Date.new(d[2], d[0], d[1])
+        end
+      end
+  end
+
   def str_to_float(str)
     str[1..-1].to_f
   end
@@ -112,17 +125,17 @@ class Reconciler
   def run_matches(&block)
     ynab_multimatched.clear
     ynab_unmatched.each do |y|
-      potential = capital_one_unmatched.select { |c| yield(y, c) }
+      potential = bank_unmatched.select { |c| yield(y, c) }
 
       case potential.size
       when 1
         matches[y] = match = potential.first
-        capital_one_unmatched.delete(match)
+        bank_unmatched.delete(match)
       when 0
         nil
         # do nothing
       else
-        binding.pry
+        # binding.pry
         ynab_multimatched << y
       end
     end
@@ -151,20 +164,20 @@ class Reconciler
   end
 end
 
-reconciler = Reconciler.new(ynab_data_file, capital_one_data_file)
+reconciler = Reconciler.new(ynab_data_file, chase_data_file)
 
 def summary(i, reconciler)
   puts <<~STR
     Summary after #{i} day match
     Matched:         #{reconciler.matches.size}
     Unmatched YNAB:  #{reconciler.ynab_unmatched.size}
-    Unmatched  360:  #{reconciler.capital_one_unmatched.size}
+    Unmatched Bank:  #{reconciler.bank_unmatched.size}
     YNAB multimatch: #{reconciler.ynab_multimatched.size}
   STR
 end
 
 summary(0, reconciler)
-20.times do |i|
+10.times do |i|
   reconciler.run_n_day_matches(i)
   summary(i, reconciler)
 end
