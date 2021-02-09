@@ -9,12 +9,11 @@ require "pry-byebug"
 require "csv"
 require "active_support/core_ext"
 
-ynab_data_file = "data/ynab_register.csv"
-# capital_one_data_file = "data/capital_one_0901-1124.csv"
-chase_data_file = "data/Chase5185_Activity20191101_20191217_20191217.csv"
+ynab_data_file = "data/ynab_data.csv"
+bank_data_file = "data/AmazonTransaction.csv"
 
 class Reconciler
-  EARLIEST_DATE = Date.new(2019, 9, 1)
+  EARLIEST_DATE = Date.new(2020, 12, 15)
 
   attr_accessor :ynab_data,
     :bank_data,
@@ -25,7 +24,9 @@ class Reconciler
 
   def initialize(ynab_data_file, bank_data_file)
     # @bank_data = load_capital_one_data(bank_data_file)
-    @bank_data = load_chase_data(bank_data_file)
+    # @bank_data = load_chase_data(bank_data_file)
+    @bank_data = load_amazon_card_data(bank_data_file)
+    @bank_data.reject! { |r| r[:date] < EARLIEST_DATE }
     @ynab_data = load_ynab_data(ynab_data_file)
     @matches = {}
     @ynab_multimatched = []
@@ -35,7 +36,7 @@ class Reconciler
 
   def load_ynab_data(ynab_data_file)
     data = CSV.foreach(ynab_data_file, headers: true, header_converters: :symbol)
-      .select { |row| row[:account] == "Unlimited Visa" }
+      .select { |row| row[:account] == "Amazon Prime Store Card" }
       .map { |row|
         row.to_hash.except(:flag, :category_groupcategory).tap do |h|
           h[:inflow] = str_to_float(row[:inflow])
@@ -118,6 +119,17 @@ class Reconciler
       end
   end
 
+  def load_amazon_card_data(amazon_card_data_file)
+    CSV.foreach(amazon_card_data_file, headers: true, header_converters: :symbol)
+      .map do |row|
+        row.to_hash.except(:amount, :transaction_date, :reference_number).tap do |h|
+          h[:amount] = row[:amount].to_f
+          d = row[:transaction_date].split("/").map(&:to_i)
+          h[:date] = Date.new(d[2], d[0], d[1])
+        end
+      end
+  end
+
   def str_to_float(str)
     str[1..-1].to_f
   end
@@ -164,7 +176,7 @@ class Reconciler
   end
 end
 
-reconciler = Reconciler.new(ynab_data_file, chase_data_file)
+reconciler = Reconciler.new(ynab_data_file, bank_data_file)
 
 def summary(i, reconciler)
   puts <<~STR
